@@ -1,16 +1,15 @@
-# This is a sample Python script.
+import argparse
+import pathlib
 
-# Press Shift+F10 to execute it or replace it with your code.
-# Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
+from processor import Processor
 
+# TODO argument parser
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="PCAP Processor")
+    parser.add_argument('-f', '--file_path', nargs='?', const='./samples/test.pcap', type=pathlib.Path)
+    args = parser.parse_args()
+    file_path = args.file_path.as_posix()
+else:
+    file_path = './samples/test.pcap'
 
-def print_hi(name):
-    # Use a breakpoint in the code line below to debug your script.
-    print(f'Hi, {name}')  # Press Ctrl+F8 to toggle the breakpoint.
-
-
-# Press the green button in the gutter to run the script.
-if __name__ == '__main__':
-    print_hi('PyCharm')
-
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
+Processor(file_path).display_pcap()
