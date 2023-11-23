@@ -1,1 +1,5 @@
 scapy == 2.5.0
+matplotlib == 3.8.1
+pyx == 0.16
+pyshark == 0.6
+libpcap == 1.11.0b7
