@@ -9,6 +9,7 @@ from os import unlink
 from pathlib import Path
 import re
 
+
 # TODO library & code cleanup
 
 
@@ -21,14 +22,19 @@ class Processor:
         else:
             self.path = filepath
             self.capture = rdpcap(self.path)
-            self.filter_tempfile = tempfile.NamedTemporaryFile(prefix='filter-' + strftime("%Y%m%d%H%M%S") + '-',
-                                                               suffix='.pcap', delete=False)
-            self.filter_filepath = self.filter_tempfile.name
-            self.filter_capture = None
+            self.filter_tempfiles = []
+            self.filter_filepaths = []
+            self.filter_captures = []
 
     def __del__(self):
-        self.filter_tempfile.close()
-        unlink(self.filter_filepath)
+        for i in range(len(self.filter_tempfiles)):
+            try:
+                self.filter_tempfiles[i].close()
+                unlink(self.filter_filepaths[i])
+            except FileNotFoundError as e:
+                e.add_note("An error occured: No file to close.")
+                e.add_note("Check temporary directory for the orphaned filter files.")
+                raise
 
     def __get_layers(self, pkt):
         count = 0
@@ -90,36 +96,48 @@ class Processor:
 
     def filter_packets(self, d_filter):
         try:
-            pyshark.FileCapture(self.path, display_filter=d_filter, output_file=self.filter_filepath).load_packets()
-            if Path(self.filter_filepath).stat().st_size == 0:
+            self.filter_tempfiles.append(tempfile.NamedTemporaryFile(prefix='filter-' + strftime("%Y%m%d%H%M%S") + '-',
+                                                                     suffix='.pcap', delete=False))
+            self.filter_filepaths.append(self.filter_tempfiles[-1].name)
+            pyshark.FileCapture(self.path, display_filter=d_filter,
+                                output_file=self.filter_filepaths[-1]).load_packets()
+            if Path(self.filter_filepaths[-1]).stat().st_size == 0:  # Empty filter file handling
+                self.filter_tempfiles[-1].close()
+                unlink(self.filter_filepaths[-1])
+                self.filter_tempfiles.pop()
+                self.filter_filepaths.pop()
                 raise Exception('Filter file is empty.')
+            else:
+                self.filter_captures.append(rdpcap(self.filter_filepaths[-1]))
+                return self.filter_filepaths[-1]
         except Exception as e:
             print(f'An error occurred: {e}')
-        else:
-            self.filter_capture = rdpcap(self.filter_filepath)
 
     def display_filter(self, method='plain'):
         try:
-            if self.filter_capture is None:
+            if self.filter_captures[-1] is None:
                 raise Exception('Filter file is empty.')
         except Exception as e:
             print(f'An error occurred: {e}')
         else:
-            if len(self.filter_capture) != 0:
+            if len(self.filter_captures[-1]) != 0:
                 match method:
                     case 'plain':
-                        for pkt in self.filter_capture:
+                        for pkt in self.filter_captures[-1]:
                             print(pkt)
                     case 'hex':
-                        for pkt in self.filter_capture:
+                        for pkt in self.filter_captures[-1]:
                             sep_str = '='*71+'\n'
                             print(sep_str+hexdump(pkt, True), end='\n'+sep_str)
+                    case 'raw':
+                        for pkt in self.filter_captures[-1]:
+                            print(raw(pkt))
                     case _:
                         raise ValueError('Incorrect method applied.')
 
     def __glc_ftp(self, login_credentials, usernames, passwords):
         self.filter_packets('ftp.request.command == "USER" ||  ftp.request.command == "PASS"')
-        for pkt in self.filter_capture:
+        for pkt in self.filter_captures[-1]:
             usernames.extend(rb.decode("utf-8") for rb in re.findall(rb'USER (.*?)\r\n', raw(pkt)))
             passwords.extend(rb.decode("utf-8") for rb in re.findall(rb'PASS (.*?)\r\n', raw(pkt)))
         else:
@@ -127,13 +145,13 @@ class Processor:
             login_credentials.append(list(set(passwords)))
 
     def __glc_telnet(self, login_credentials, usernames, passwords):
-        # TODO cleanup
+        # TODO REWRITE --> NEEDS TCP STREAM EXTRACTION!
         self.filter_packets('telnet.data')
         marked_index = None
         tmp = ''
 
-        for i in range(len(self.filter_capture)):
-            if raw(self.filter_capture[i])[-7:] == b'login: ':
+        for i in range(len(self.filter_captures[-1])):
+            if raw(self.filter_captures[-1][i])[-7:] == b'login: ':
                 marked_index = i
 
                 # TODO: extraction when one field password/username
@@ -145,25 +163,25 @@ class Processor:
                         #                                                      raw(self.filter_capture[j]))]
                         #         print(z)
 
-                for j in range(marked_index + 1, len(self.filter_capture)):
-                    if raw(self.filter_capture[j])[-2:] == b'\r\x00':
+                for j in range(marked_index + 1, len(self.filter_captures[-1])):
+                    if raw(self.filter_captures[-1][j])[-2:] == b'\r\x00':
                         usernames.append(tmp)
                         marked_index = None
                         tmp = ''
                         break
                     # Concat segmented usernames
-                    tmp += (raw(self.filter_capture[j])[-1:]).decode('utf-8')
+                    tmp += (raw(self.filter_captures[-1][j])[-1:]).decode('utf-8')
 
-            if raw(self.filter_capture[i])[-10:] == b'Password: ':
+            if raw(self.filter_captures[-1][i])[-10:] == b'Password: ':
                 marked_index = i
-                for j in range(marked_index + 1, len(self.filter_capture)):
-                    if raw(self.filter_capture[j])[-2:] == b'\r\x00':
+                for j in range(marked_index + 1, len(self.filter_captures[-1])):
+                    if raw(self.filter_captures[-1][j])[-2:] == b'\r\x00':
                         passwords.append(tmp)
                         marked_index = None
                         tmp = ''
                         break
                     # Concat segmented passwords
-                    tmp += (raw(self.filter_capture[j])[-1:]).decode('utf-8')
+                    tmp += (raw(self.filter_captures[-1][j])[-1:]).decode('utf-8')
 
         # clear usernames (duplicate letters)
         cl_usernames = [''.join(char1 for char1, char2 in zip(s, s[1:] + ' ') if char1 != char2) for s in usernames]
@@ -177,7 +195,29 @@ class Processor:
             case 'ftp':
                 self.__glc_ftp(login_credentials, usernames, passwords)
             case 'telnet':
+                # TODO: Rewrite telnet login extraction
                 self.__glc_telnet(login_credentials, usernames, passwords)
             case _:
                 raise ValueError('Incorrect protocol applied.')
         return proto, login_credentials
+
+    def get_dns_queries(self, dns_qry_name=''):
+        try:
+            dns_filter_filepath = self.filter_packets('dns.qry.name=="'+str(dns_qry_name)+'"')
+            if Path(dns_filter_filepath).is_file() and Path(dns_filter_filepath).stat().st_size != 0:
+                return self.filter_captures[-1]
+            else:
+                raise FileNotFoundError("No DNS queries found. Filter file empty.")
+        except Exception as e:
+            print(f'An error occurred: {e}')
+
+    def get_tcp_streams(self):
+        # TODO extracting tcp streams with filter method
+        pass
+        # counter = 0
+        # streams_filtered = [self.filter_packets("tcp.stream eq "+str(counter))]
+        # counter += 1
+        # streams_filtered.append(self.filter_packets("tcp.stream eq "+str(counter)))
+        # print(streams_filtered)
+        # while True:
+        #     counter += 1
