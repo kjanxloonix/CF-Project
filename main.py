@@ -7,21 +7,23 @@ from processor import Processor
 
 def main():
     parser = argparse.ArgumentParser(description="PCAP Processor")
-    parser.add_argument('-f', '--file_path', nargs='?', const=r"./samples/TELNET.pcapng", type=pathlib.Path) #  cm4116_telnet.cap
+    parser.add_argument('-f', '--file_path', nargs='?',
+                        const=r"./samples/TELNET.pcapng", type=pathlib.Path)
     args = parser.parse_args()
     file_path = args.file_path.as_posix()
     proc = Processor(file_path)
+
     # # EXAMPLES
-    # proc.extract_sessions()
+    # print(proc.extract_sessions())
     # print(proc.extract_conn_info())
     # proc.display_nsummary()
     # print(proc.extract_ip_addr())
     # proc.get_packet('raw')
-    # print(proc.get_login_credentials('telnet'))
+    print(proc.get_login_credentials('ftp'))
+    print(proc.get_login_credentials('telnet'))
     # # firefox.settings.services.mozilla.com
-    # for i in proc.get_dns_queries('firefox.settings.services.mozilla.com'):
-    #     print(i)
-    proc.get_tcp_streams()
+    # dns_qry = proc.get_dns_queries('example.com')
+    # proc.display_packets(dns_qry)
 
 
 if __name__ == "__main__":
