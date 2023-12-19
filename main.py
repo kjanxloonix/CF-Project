@@ -19,11 +19,13 @@ def main():
     # proc.display_nsummary()
     # print(proc.extract_ip_addr())
     # proc.get_packet('raw')
-    print(proc.get_login_credentials('ftp'))
+    # print(proc.get_login_credentials('ftp'))
     print(proc.get_login_credentials('telnet'))
     # # firefox.settings.services.mozilla.com
     # dns_qry = proc.get_dns_queries('example.com')
     # proc.display_packets(dns_qry)
+    # proc.extract_ftp_files()
+    # proc.extract_tcp_stream_data(0)
 
 
 if __name__ == "__main__":

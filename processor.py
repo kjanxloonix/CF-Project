@@ -9,7 +9,6 @@ from os import unlink
 from pathlib import Path
 import re
 
-
 # TODO library & code cleanup
 
 
@@ -95,6 +94,23 @@ class Processor:
                     break
             return self.tcp_streams
 
+    def filtered_tcp_streams(self, d_filter=''):
+        if not self.has_tcp_streams():
+            self.get_tcp_streams()
+            counter = len(self.tcp_streams)
+        else:
+            counter = len(self.tcp_streams)
+        filtered_streams = []
+
+        for i in range(counter):
+            if d_filter != '':
+                filtered_packets = self.filter_packets(d_filter + " && tcp.stream eq " + str(i))[0]
+                filtered_streams.append(filtered_packets) if len(filtered_packets) > 0 else filtered_streams
+            else:
+                filtered_packets = self.filter_packets("tcp.stream eq " + str(i))[0]
+                filtered_streams.append(filtered_packets) if len(filtered_packets) > 0 else filtered_streams
+        return filtered_streams
+
     def display_nsummary(self):
         self.capture.nsummary()
 
@@ -110,7 +126,7 @@ class Processor:
             list_of_ips.extend([p[ARP].pdst for p in self.capture if ARP in p])
         return dict(Counter(list_of_ips))
 
-    def extract_conn_info(self, ip='IP', arp_pkts=True):
+    def extract_conn_info(self, ip='IP', arp_pkts=False):
         extract_list = []
         for p in self.capture:
             lays = [layer.name for layer in self.__get_layers(p)]
@@ -220,3 +236,31 @@ class Processor:
 
     def get_dns_queries(self, dns_qry_name=''):
         return self.filter_packets('dns.qry.name=="' + str(dns_qry_name) + '"')[0]
+
+    def extract_ftp_files(self):
+        filtered_streams = self.filtered_tcp_streams('ftp-data')
+        files = []
+        for stream in filtered_streams:
+            filedata = b''.join(p[Raw].load if p.haslayer(Raw) else b'' for p in stream)
+            if filedata:
+                files.append(filedata)
+        for file in files:
+            filename = ('ftp-' + strftime("%Y%m%d%H%M%S") + '-' +
+                        ''.join(random.choice(string.ascii_lowercase) for _ in range(10)))
+            with open(filename, 'wb') as f:
+                f.write(file)
+
+    def extract_tcp_stream_data(self, tcp_stream_index):
+        try:
+            if not self.has_tcp_streams():
+                self.get_tcp_streams()
+            filedata = b''
+            for stream in self.tcp_streams[tcp_stream_index][0]:
+                filedata += b''.join(p[Raw].load if p.haslayer(Raw) else b'' for p in stream)
+
+            filename = ('tcp-stream-' + str(tcp_stream_index) + '-data-' + strftime("%Y%m%d%H%M%S") + '-' +
+                        ''.join(random.choice(string.ascii_lowercase) for _ in range(10)))
+            with open(filename, 'wb') as f:
+                f.write(filedata)
+        except Exception as e:
+            print(f'An error occurred: {e}')
