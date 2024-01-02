@@ -1,15 +1,15 @@
 from scapy.all import *
 from scapy.layers.inet6 import *
 from scapy.layers.l2 import ARP
-from collections import Counter
 import pyshark
+
+from collections import Counter
 from time import strftime
 import tempfile
 from os import unlink
 from pathlib import Path
 import re
-
-# TODO library & code cleanup
+import csv
 
 
 class Processor:
@@ -136,12 +136,13 @@ class Processor:
             if ip in p:
                 if TCP in p or UDP in p:
                     extract_list.append(
-                        {'arr_time': p.time, 'layers': lays, 'ip_src': p[ip].src, 'ip_dst': p[ip].dst,
-                         's_port': p[ip].sport, 'd_port': p[ip].dport, 'mac_src': p[ip].src, 'mac_dst': p[ip].dst})
+                        {'arr_time': p.time, 'layers': lays, 'ip_src': p[ip].src,
+                         'ip_dst': p[ip].dst, 's_port': p[ip].sport, 'd_port': p[ip].dport,
+                         'mac_src': p[Ether].src, 'mac_dst': p[Ether].dst})
                 else:
                     extract_list.append({'arr_time': p.time, 'layers': lays,
                                          'ip_src': p[ip].src, 'ip_dst': p[ip].dst,
-                                         'mac_src': p[ip].src, 'mac_dst': p[ip].dst})
+                                         'mac_src': p[Ether].src, 'mac_dst': p[Ether].dst})
         return extract_list
 
     def extract_sessions(self):
@@ -264,3 +265,21 @@ class Processor:
                 f.write(filedata)
         except Exception as e:
             print(f'An error occurred: {e}')
+
+    def write_to_csv(self, ip='IP', arp_pkts=False):
+        header = ['arr_time', 'layers', 'ip_src', 'ip_dst', 's_port', 'd_port', 'mac_src', 'mac_dst']
+        data = self.extract_conn_info(ip=ip, arp_pkts=arp_pkts)
+
+        with open('connection-info-' + strftime("%Y%m%d%H%M%S") + '.csv', 'w', encoding='UTF8', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=header)
+            writer.writeheader()
+            writer.writerows(data)
+
+    def credentials_to_txt(self, proto):
+        credentials = self.get_login_credentials(proto)
+        print(credentials)
+        timestamp = strftime("%Y%m%d%H%M%S")
+        with open('usernames-' + str(proto) + '-' + timestamp + '.txt', 'w') as f:
+            f.writelines('\n'.join(credentials[1][0]))
+        with open('passwords-' + str(proto) + '-' + timestamp + '.txt', 'w') as f:
+            f.writelines('\n'.join(credentials[1][1]))
