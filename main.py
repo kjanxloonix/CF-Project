@@ -115,8 +115,8 @@ def main():
         proc.extract_ftp_files()
     if hasattr(args, 'bp_filter'):
         try:
-            f = proc.filter_packets(args.bp_filter[0])
-            if args.filter_display_method:
+            f = proc.filter_packets(d_filter=args.bp_filter)
+            if hasattr(args, 'filter_display_method'):
                 proc.display_packets(f[0], args.filter_display_method)
         except Exception as e:
             print(f'An error occurred: {e}')
